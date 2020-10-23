@@ -3,12 +3,14 @@ import os
 current_dir = os.path.dirname(os.path.realpath(__file__))
 
 # Database
-database = "amazon_crawler"
-host = ""
-user = ""
+database = "postgres"
+host = "localhost"
+user = "postgres"
+port = 5432
+password="postgres"
 
 # Redis
-redis_host = ""
+redis_host = "localhost"
 redis_port = 6379
 redis_db = 0
 

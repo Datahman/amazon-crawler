@@ -1,21 +1,22 @@
+import settings
+from requests.exceptions import RequestException
+from bs4 import BeautifulSoup
+import redis
 import os
 import random
 from datetime import datetime
-from urlparse import urlparse
+from urllib.parse import urlparse
+
 
 import eventlet
 requests = eventlet.import_patched('requests.__init__')
 time = eventlet.import_patched('time')
-import redis
 
-from BeautifulSoup import BeautifulSoup
-from requests.exceptions import RequestException
-
-import settings
 
 num_requests = 0
 
-redis = redis.StrictRedis(host=settings.redis_host, port=settings.redis_port, db=settings.redis_db)
+redis = redis.StrictRedis(host=settings.redis_host,
+                          port=settings.redis_port, db=settings.redis_db)
 
 
 def make_request(url, return_soup=True):
@@ -28,11 +29,13 @@ def make_request(url, return_soup=True):
 
     global num_requests
     if num_requests >= settings.max_requests:
-        raise Exception("Reached the max number of requests: {}".format(settings.max_requests))
+        raise Exception("Reached the max number of requests: {}".format(
+            settings.max_requests))
 
     proxies = get_proxy()
     try:
-        r = requests.get(url, headers=settings.headers, proxies=proxies)
+        r = requests.get("https://api.proxycrawl.com/?token=kdopUpW3iBdlvQkyy0hbyA&url=" +
+                         url, headers=settings.headers, proxies=proxies)
     except RequestException as e:
         log("WARNING: Request for {} failed, trying again.".format(url))
         return make_request(url)  # try request again, recursively
@@ -61,11 +64,13 @@ def format_url(url):
         query = ""
     else:
         query = "?"
-        for piece in u.query.split("&"):
-            k, v = piece.split("=")
-            if k in settings.allowed_params:
-                query += "{k}={v}&".format(**locals())
-        query = query[:-1]
+        if(type(u.query) is str):
+            for piece in u.query.split("&"):
+                if "=" in piece:
+                    k, v = piece.split("=")
+                    if k in settings.allowed_params:
+                        query += "{k}={v}&".format(**locals())
+            query = query[:-1]
 
     return "{scheme}://{host}{path}{query}".format(**locals())
 
@@ -74,7 +79,7 @@ def log(msg):
     # global logging function
     if settings.log_stdout:
         try:
-            print "{}: {}".format(datetime.now(), msg)
+            print("{}: {}".format(datetime.now(), msg))
         except UnicodeEncodeError:
             pass  # squash logging errors in case of non-ascii text
 
@@ -110,4 +115,4 @@ def dequeue_url():
 if __name__ == '__main__':
     # test proxy server IP masking
     r = make_request('https://api.ipify.org?format=json', return_soup=False)
-    print r.text
+    print(r.text)

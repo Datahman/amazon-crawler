@@ -1,8 +1,7 @@
 import psycopg2
 
 import settings
-
-conn = psycopg2.connect(database=settings.database, host=settings.host, user=settings.user)
+conn = psycopg2.connect(database=settings.database, host=settings.host,port=settings.port, user=settings.user,password=settings.password)
 cur = conn.cursor()
 
 

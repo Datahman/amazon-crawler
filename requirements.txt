@@ -1,4 +1,4 @@
-BeautifulSoup==3.2.1
+#BeautifulSoup==3.2.1
 PySocks==1.5.7
 eventlet==0.19.0
 greenlet==0.4.10

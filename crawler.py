@@ -2,6 +2,7 @@ import sys
 from datetime import datetime
 
 import eventlet
+import redis
 
 import settings
 from models import ProductRecord
@@ -27,8 +28,11 @@ def begin_crawl():
             count = 0
 
             # look for subcategory links on this page
-            subcategories = page.findAll("div", "bxc-grid__image")  # downward arrow graphics
-            subcategories.extend(page.findAll("li", "sub-categories__list__item"))  # carousel hover menu
+            subcategories = page.findAll(
+                "div", "bxc-grid__image")  # downward arrow graphics
+            # carousel hover menu
+            subcategories.extend(page.findAll(
+                "li", "sub-categories__list__item"))
             sidebar = page.find("div", "browseBox")
             if sidebar:
                 subcategories.extend(sidebar.findAll("li"))  # left sidebar
@@ -48,6 +52,7 @@ def fetch_listing():
 
     global crawl_time
     url = dequeue_url()
+    url = url.decode('utf-8')
     if not url:
         log("WARNING: No URLs found in the queue. Retrying...")
         pile.spawn(fetch_listing)
@@ -57,7 +62,7 @@ def fetch_listing():
     if not page:
         return
 
-    items = page.findAll("li", "s-result-item")
+    items = page.findAll("div", "s-result-item")
     log("Found {} items on {}".format(len(items), url))
 
     for item in items[:settings.max_details_per_listing]:
@@ -93,10 +98,19 @@ def fetch_listing():
 
 if __name__ == '__main__':
 
-    if len(sys.argv) > 1 and sys.argv[1] == "start":
-        log("Seeding the URL frontier with subcategory URLs")
-        begin_crawl()  # put a bunch of subcategory URLs into the queue
+    if len(sys.argv) > 1:
+        if(sys.argv[1] == "start"):
+            log("Seeding the URL frontier with subcategory URLs")
+            begin_crawl()  # put a bunch of subcategory URLs into the queue
 
-    log("Beginning crawl at {}".format(crawl_time))
-    [pile.spawn(fetch_listing) for _ in range(settings.max_threads)]
-    pool.waitall()
+            log("Beginning crawl at {}".format(crawl_time))
+            [pile.spawn(fetch_listing) for _ in range(settings.max_threads)]
+            pool.waitall()
+
+        if(sys.argv[1] == "clear-redis-db"):
+            r = redis.Redis()
+            log("Flushing queue. Current queue count {}".format(
+                r.scard("listing_url_queue")))
+            r.flushdb()
+            log("Flushed queue. Current queue count {}".format(
+                r.scard("listing_url_queue")))
