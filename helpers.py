@@ -1,12 +1,14 @@
+from models import ProductRecord, Response
 import settings
 from requests.exceptions import RequestException
 from bs4 import BeautifulSoup
 import redis
 import os
 import random
+import json
 from datetime import datetime
 from urllib.parse import urlparse
-
+from urllib.parse import quote, unquote
 
 import eventlet
 requests = eventlet.import_patched('requests.__init__')
@@ -14,18 +16,14 @@ time = eventlet.import_patched('time')
 
 
 num_requests = 0
+current_url_listing: str = ""
+currentKey: int = 0
 
 redis = redis.StrictRedis(host=settings.redis_host,
                           port=settings.redis_port, db=settings.redis_db)
 
 
 def make_request(url, return_soup=True):
-    # global request building and response handling
-
-    url = format_url(url)
-
-    if "picassoRedirect" in url:
-        return None  # skip the redirect URLs
 
     global num_requests
     if num_requests >= settings.max_requests:
@@ -34,13 +32,22 @@ def make_request(url, return_soup=True):
 
     proxies = get_proxy()
     try:
-        r = requests.get("https://api.proxycrawl.com/?token=kdopUpW3iBdlvQkyy0hbyA&url=" +
-                         url, headers=settings.headers, proxies=proxies)
+        num_requests += 1
+        proxyURL = "https://api.proxycrawl.com/scraper?token=kdopUpW3iBdlvQkyy0hbyA&url="
+
+        paginated_url = "{0}&page={1}".format(
+            url, num_requests)
+        paginated_url = quote(paginated_url)
+
+        encodedURL = proxyURL+paginated_url
+
+        log("Making Request on paginated URL {0} ".format(
+            unquote(paginated_url)))
+        r = requests.get(
+            encodedURL, headers=settings.headers, proxies=proxies)
     except RequestException as e:
         log("WARNING: Request for {} failed, trying again.".format(url))
         return make_request(url)  # try request again, recursively
-
-    num_requests += 1
 
     if r.status_code != 200:
         os.system('say "Got non-200 Response"')
@@ -48,11 +55,14 @@ def make_request(url, return_soup=True):
         return None
 
     if return_soup:
-        return BeautifulSoup(r.text), r.text
+        response_dict = {}
+        response_dict['response'] = r
+        response_dict['current_listing_url'] = unquote(paginated_url)
+        return response_dict
     return r
 
 
-def format_url(url):
+# def format_url(url):
     # make sure URLs aren't relative, and strip unnecssary query args
     u = urlparse(url)
 
@@ -103,13 +113,13 @@ def get_proxy():
     }
 
 
-def enqueue_url(u):
-    url = format_url(u)
-    return redis.sadd("listing_url_queue", url)
+def item_queue(item: dict):
+    itemJson: str = json.dumps(item, indent=4)
+    return redis.sadd("item_queue", itemJson)
 
 
-def dequeue_url():
-    return redis.spop("listing_url_queue")
+def item_dequeue():
+    return redis.spop("item_queue")
 
 
 if __name__ == '__main__':
