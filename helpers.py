@@ -1,23 +1,36 @@
-from models import ProductRecord, Response
 import settings
 from requests.exceptions import RequestException
-from bs4 import BeautifulSoup
+import requests
 import redis
 import os
 import random
 import json
+import time
 from datetime import datetime
 from urllib.parse import urlparse
 from urllib.parse import quote, unquote
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from lxml import html
+from fake_useragent import UserAgent
 
 import eventlet
 requests = eventlet.import_patched('requests.__init__')
 time = eventlet.import_patched('time')
 
-
 num_requests = 0
-current_url_listing: str = ""
-currentKey: int = 0
+
+
+chrome_options = Options()
+chrome_options.add_argument('--no-sandbox')
+chrome_options.add_argument('--headless')
+chrome_options.add_argument('--disable-dev-shm-usage')
+
+driver = webdriver.Chrome(
+    executable_path="/usr/bin/chromedriver", chrome_options=chrome_options)
 
 redis = redis.StrictRedis(host=settings.redis_host,
                           port=settings.redis_port, db=settings.redis_db)
@@ -120,6 +133,17 @@ def item_queue(item: dict):
 
 def item_dequeue():
     return redis.spop("item_queue")
+
+
+def browser_request(url: str):
+
+    ua = UserAgent()
+
+    sess = requests.Session()
+    sess.headers['User-Agent'] = ua.random
+    res = sess.get(url)
+    data = res.content
+    return data
 
 
 if __name__ == '__main__':

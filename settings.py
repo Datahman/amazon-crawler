@@ -1,5 +1,5 @@
 import os
-from fake_useragent import UserAgent
+
 
 current_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -22,14 +22,6 @@ headers = {
     "Accept-Language": "en-US,en;q=0.8",
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36",
 }
-
-# ua = UserAgent()
-# headers = {'User-Agent': ua.random,
-#            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-#            'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.3',
-#            'Accept-Encoding': 'none',
-#            'Accept-Language': 'en-US,en;q=0.8',
-#            'Connection': 'keep-alive'}
 
 allowed_params = ["node", "rh", "page"]
 

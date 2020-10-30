@@ -1,5 +1,6 @@
 import sys
 import json
+import time
 from datetime import datetime
 
 import eventlet
@@ -7,10 +8,10 @@ import redis
 
 import settings
 from models import ProductRecord, Response
-from helpers import item_dequeue, item_queue, make_request, log, current_url_listing
-from extractors import get_title, get_url, get_price, get_primary_img
-
-
+from helpers import item_dequeue, item_queue, make_request, log, browser_request
+from urllib.parse import urlparse, unquote
+from pathlib import PurePosixPath
+from lxml import html
 crawl_time = datetime.now()
 
 pool = eventlet.GreenPool(settings.max_threads)
@@ -67,10 +68,13 @@ def fetch_items():
     for item in response["body"
                          ]["products"][:settings.max_details_per_listing]:
 
-        product_image = item["image"]
-        if not product_image:
-            log("No product image detected, skipping")
+        product_asin = item["asin"]
+
+        if not product_asin:
+            log("No asin detected, skipping")
             continue
+        product_image = item["image"]
+        # getProductComments(item["url"],product_asin)
         product_title = item["name"]
         product_url = item["url"]
         product_listing_url = response["current_listing_url"]
@@ -80,7 +84,6 @@ def fetch_items():
         product_shipping_message = item["shippingMessage"]
         product_is_prime = item["isPrime"]
         product_sponsored_ad = item["sponsoredAd"]
-        product_asin = item["asin"]
 
         product = ProductRecord(
             title=product_title,
@@ -105,6 +108,113 @@ def fetch_items():
     #     pile.spawn(fetch_listing)
 
 
+def getProductComments(product_url: str, product_asin: str):
+
+    url_paths = PurePosixPath(
+        unquote(
+            urlparse(
+                product_url
+            ).path
+        )
+    ).parts
+
+    product_name_path = url_paths[1]
+    product_asin_path = url_paths[3]
+
+    product_comments_url = "https://www.amazon.co.uk/{0}/product-reviews/{1}/ref=cm_cr_dp_d_show_all_btm?ie=UTF8&reviewerType=all_reviews".format(
+        product_name_path, product_asin_path)
+
+    if product_asin_path != product_asin:
+        raise Exception("Product asin mismatch! url :{0} product: {1}".format(
+            product_asin_path, product_asin))
+
+    all_comments_page = browser_request(product_comments_url)
+
+    all_comments_list = html.fromstring(
+        all_comments_page.decode()).xpath("//*[@id='cm_cr-review_list']")
+
+    reviews = []
+
+    for review_index in range(len(all_comments_list[0])):
+        review = {}
+        review_id: str = ""
+        if("id" in all_comments_list[0][review_index].attrib):
+            review_id = all_comments_list[0][review_index].attrib["id"]
+            review['id'] = review_id
+            if(review_id):
+                review_rating_div = all_comments_list[0][review_index].xpath(
+                    "//*[@id='customer_review-{0}']/div[2]/a[1]".format(review_id))
+                if len(review_rating_div):
+                    review_rating = review_rating_div[0].attrib["title"]
+                    review["rating"] = review_rating
+            else:
+                review_rating_div = all_comments_list[0][review_index].xpath(
+                    "//*[@id='customer_review_foreign-{0}']/div[2]/i/span/text()".format(review_id))
+                if len(review_rating_div):
+                    review_rating = review_rating_div[0]
+                    review["rating"] = review_rating
+
+            review_description_div = all_comments_list[0][review_index].xpath(
+                "//*[@id='customer_review-{0}']/div[2]/a[2]/span/text()".format(review_id))
+
+            if(len(review_description_div)):
+                review_description = review_description_div[0]
+                review["description"] = review_description
+
+            else:
+                review_description_div = all_comments_list[0][review_index].xpath(
+                    "//*[@id='customer_review_foreign-{0}']/div[2]/span[2]/span".format(review_id))
+
+                if(len(review_description_div)):
+                    review_description = review_description_div[0]
+                    review["description"] = review_description.text
+
+            review_date_div = all_comments_list[0][review_index].xpath(
+                "//*[@id='customer_review-{0}']/span".format(review_id))
+
+            if(len(review_date_div)):
+                review_date = review_date_div[0].text
+                review["date"] = review_date
+            else:
+                review_date_div = all_comments_list[0][review_index].xpath(
+                    "//*[@id='customer_review_foreign-{0}']/span".format(review_id))
+                if(len(review_date_div)):
+                    review_date = review_date_div[0].text
+                    review["date"] = review_date
+
+            review_item_description_div = all_comments_list[0][review_index].xpath(
+                "//*[@id='customer_review-{0}']/div[3]/a".format(review_id))
+
+            if(len(review_item_description_div)):
+                review_item_description = review_item_description_div[0].text
+                review["item_description"] = review_item_description
+            else:
+                review_item_description_div = all_comments_list[0][review_index].xpath(
+                    "//*[@id='customer_review_foreign-{0}']/div[3]/a/text()".format(review_id))
+
+                if(len(review_item_description_div)):
+                    review_item_description = ",".join(
+                        review_item_description_div)
+                    review["item_description"] = review_item_description
+
+            review_text_div = all_comments_list[0][review_index].xpath(
+                "//*[@id='customer_review-{0}']/div[4]/span/span/text()".format(review_id))
+
+            if len(review_text_div):
+                review_text = review_text_div[0]
+                review["text"] = review_text
+            else:
+                review_text_div = all_comments_list[0][review_index].xpath(
+                    "//*[@id='customer_review_foreign-{0}']/div[4]/span/span/text()".format(review_id))
+                if len(review_text_div):
+                    review_text = review_text_div[0]
+                    review["text"] = review_text
+
+            reviews.append(review)
+
+    return reviews
+
+
 if __name__ == '__main__':
 
     if len(sys.argv) > 1:
@@ -121,3 +231,6 @@ if __name__ == '__main__':
 
             [pile.spawn(fetch_items) for _ in range(r.scard("item_queue"))]
             pool.waitall()
+    if(sys.argv[1] == "test"):
+        customer_review_page = getProductComments(
+            'https://www.amazon.co.uk/State-Cashmere-Pullover-Hoodie-Drawstring/product-reviews/B07MZ3HCXJ/ref=cm_cr_dp_d_show_all_btm?ie=UTF8&reviewerType=all_reviews', "B07MZ3HCXJ")
